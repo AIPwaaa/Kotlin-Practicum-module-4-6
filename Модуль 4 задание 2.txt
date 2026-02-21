@@ -1,0 +1,61 @@
+package com.example.console
+
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.*
+import kotlin.random.Random
+import kotlin.system.measureTimeMillis
+import java.io.File
+import java.security.MessageDigest
+
+fun main() = runBlocking {
+
+    val rootPath = "./test_json"
+    val timeoutSeconds = 5L
+
+    val time = measureTimeMillis {
+
+        val result = withTimeoutOrNull(timeoutSeconds*1000) {
+            val jsonFiles = File(rootPath)
+                .walkTopDown()
+                .filter {it.isFile && it.extension == "json"}
+                .toList()
+
+            println("Files found: ${jsonFiles.size}")
+
+            supervisorScope {
+
+                val jobs = jsonFiles.map { file ->
+                    async {
+                        val hash = calculateSHA256(file)
+                        hash to file.absolutePath
+                    }
+                }
+                jobs.awaitAll()
+                    .groupBy({it.first}, {it.second})
+                    .filter {it.value.size > 1}
+            }
+        }
+        if (result == null) {
+            println("Search broke by timeout")
+        } else {
+            if (result.isEmpty()) {
+                println("Doubeles not found")
+            } else {
+                println("Doubeles found:")
+                result.forEach { (_, files) ->
+                    println("----")
+                    files.forEach {println(it)}
+                }
+            }
+        }
+    }
+    println("Lead time: $time ms")
+}
+
+suspend fun calculateSHA256(file: File): String = withContext(Dispatchers.IO) {
+    delay(300)
+    val digest = MessageDigest.getInstance("SHA-256")
+    val bytes = file.readBytes()
+    val hash = digest.digest(bytes)
+    hash.joinToString("") { "%02x".format(it) }
+}
