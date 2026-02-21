@@ -1,0 +1,56 @@
+package com.example.console
+
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.*
+import kotlin.random.Random
+import kotlin.system.measureTimeMillis
+
+fun main() = runBlocking{
+    System.setProperty("file.encoding", "UTF-8")
+    val time = measureTimeMillis {
+        supervisorScope {
+            val users = async {
+                try {
+                    loadUsers()
+                } catch (e: Exception) {
+                    println("Ошибка загрузки пользователей")
+                }
+            }
+            val sales = async {
+                try {
+                    loadSales()
+                } catch (e: Exception) {
+                    println("Ошибка загрузки продаж")
+                }
+            }
+            val weather = async {
+                try {
+                    loadWeather()
+                } catch (e: Exception) {
+                    println("Ошибка загрузки погоды")
+                }
+            }
+            println(users.await())
+            println(sales.await())
+            println(weather.await())
+        }
+    }
+}
+
+suspend fun loadUsers(): List<String> {
+    delay(1800)
+    if (Random.nextBoolean()) throw RuntimeException("User error")
+    return listOf("Alice", "Bob", "Ivan", "Olga")
+}
+
+suspend fun loadSales(): Map<String, Int> {
+    delay(1200)
+    if (Random.nextBoolean()) throw RuntimeException("Sales error")
+    return mapOf("Coffe" to 300, "Tea" to 10)
+}
+
+suspend fun loadWeather(): List<String> {
+    delay(1200)
+    if (Random.nextBoolean()) throw RuntimeException("Weather error")
+    return listOf("Москва: -8°C", "Припять: +95°C")
+}
