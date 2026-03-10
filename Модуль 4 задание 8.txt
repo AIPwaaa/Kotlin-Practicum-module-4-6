@@ -193,6 +193,12 @@ fun TimerScreen() {
                 .then(watermarkWork)
                 .then(uploadWork)
                 .enqueue()
+
+            if(compressInfo?.state == WorkInfo.State.FAILED
+                || watermarkInfo?.state == WorkInfo.State.FAILED
+                || uploadInfo?.state == WorkInfo.State.FAILED) {
+                status = "Ошибка"
+            }
         },
             enabled = compressInfo?.state != WorkInfo.State.RUNNING
                     && watermarkInfo?.state != WorkInfo.State.RUNNING
