@@ -1,0 +1,52 @@
+package com.example.myapplication
+
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.lifecycle.ViewModel
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.launch
+import kotlin.random.Random
+
+class AnimalFactsViewModel : ViewModel() {
+
+    var currentFact by mutableStateOf("Нажми кнопку, чтобы узнать факт!")
+    var isLoading by mutableStateOf(false)
+
+    private val facts = listOf(
+        "Слоны — единственные животные, которые не умеют прыгать.",
+        "У кошек по 32 мышцы в каждом ухе.",
+        "Сердце креветки находится в голове.",
+        "У отпечатков пальцев коалы такие же узоры, как у людей.",
+        "Морские свинки спят всего по несколько минут за раз.",
+        "У улитки может быть до 25 000 зубов.",
+        "Язык синего кита весит больше, чем целый слон.",
+        "Фламинго могут есть только тогда, когда их голова перевернута.",
+        "Коровы могут спать стоя, но видят сны только лежа.",
+        "У осьминогов три сердца.",
+        "Муравьи никогда не спят.",
+        "Тигры имеют полосатую кожу, а не только мех.",
+        "Крокодилы не умеют высовывать язык.",
+        "Пчелы могут летать выше Эвереста.",
+        "Медведи гризли могут учуять запах на расстоянии до 30 км."
+    )
+
+    fun getRandomFact(): Flow<String> = flow {
+        delay(Random.nextLong(1500, 3000))
+        val randomFact = facts.random()
+        emit(randomFact)
+    }
+
+    fun loadNextFact(scope: CoroutineScope) {
+        isLoading = true
+        scope.launch {
+            getRandomFact().collect { fact ->
+                currentFact = fact
+                isLoading = false
+            }
+        }
+    }
+}
