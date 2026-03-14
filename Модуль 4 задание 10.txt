@@ -1,0 +1,263 @@
+package com.example.myapplication
+
+import kotlinx.coroutines.supervisorScope
+import android.R.attr.text
+import android.R.id.input
+import android.annotation.SuppressLint
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.content.BroadcastReceiver
+import android.content.ComponentName
+import android.content.Context
+import android.os.Bundle
+import android.util.Log
+import android.widget.Toast
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import androidx.annotation.DrawableRes
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Button
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.ComposeCompilerApi
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import java.nio.file.WatchEvent
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.movableContentOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.res.painterResource
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import kotlin.random.Random
+import androidx.compose.foundation.lazy.items
+import androidx.lifecycle.LiveData
+import androidx.lifecycle.MutableLiveData
+import androidx.lifecycle.ViewModel
+import com.example.compose.AppTheme
+import androidx.activity.viewModels
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Divider
+import androidx.compose.material3.windowsizeclass.WindowWidthSizeClass
+import androidx.compose.material3.windowsizeclass.calculateWindowSizeClass
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.navigation.NavHostController
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
+import com.example.myapplication.data.local.TodoJsonDataSource
+import com.example.myapplication.data.model.TodoRepositoryImpl
+import com.example.myapplication.domain.usecase.GetTodosUseCase
+import com.example.myapplication.domain.usecase.ToggleTodoUseCase
+import com.example.myapplication.navigation.NavGraph
+import com.example.myapplication.presentation.viewmodel.TodoViewModel
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import android.content.Intent
+import android.content.IntentFilter
+import android.content.ServiceConnection
+import android.content.pm.PackageManager
+import android.os.Build
+import android.os.IBinder
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.core.content.ContextCompat
+import androidx.work.OneTimeWorkRequest
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkManager
+import java.util.Timer
+import androidx.compose.runtime.livedata.observeAsState
+import androidx.work.ArrayCreatingInputMerger
+import androidx.work.InputMerger
+import androidx.work.WorkInfo
+import androidx.work.workDataOf
+import java.util.UUID
+import android.Manifest
+import android.location.Geocoder
+import androidx.compose.foundation.pager.HorizontalPager
+import com.google.android.gms.location.FusedLocationProviderClient
+import com.google.android.gms.location.LocationServices
+import com.google.android.gms.location.Priority
+import java.util.Locale
+
+class MainActivity : ComponentActivity() {
+
+    private lateinit var fusedLocationClient: FusedLocationProviderClient
+
+    private val addressText = mutableStateOf("Адрес не получен")
+    private val coordinatesText = mutableStateOf("")
+    private val isLoading = mutableStateOf(false)
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+
+        fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
+
+        setContent {
+            Screen(
+                address = addressText.value,
+                coordinates = coordinatesText.value,
+                isLoading = isLoading.value,
+                onGetAddressClick = { getAddress() }
+            )
+        }
+    }
+
+    private fun getAddress() {
+        isLoading.value = true
+
+        val fine = checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        val coarse = checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+
+        if (!fine && !coarse) {
+            val permissionLauncher =
+                registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { permissions ->
+                    val grantedFine = permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true
+                    val grantedCoarse = permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true
+
+                    if (grantedFine || grantedCoarse) {
+                        getAddress()
+                    } else {
+                        isLoading.value = false
+                        addressText.value = "Разрешение на геолокацию отклонено"
+                    }
+                }
+
+            permissionLauncher.launch(
+                arrayOf(
+                    Manifest.permission.ACCESS_FINE_LOCATION,
+                    Manifest.permission.ACCESS_COARSE_LOCATION
+                )
+            )
+            return
+        }
+
+        fusedLocationClient.getCurrentLocation(
+            Priority.PRIORITY_HIGH_ACCURACY,
+            null
+        ).addOnSuccessListener { location ->
+            if (location != null) {
+                val lat = location.latitude
+                val lng = location.longitude
+                coordinatesText.value = "lat: $lat  lng: $lng"
+
+                // Geocoder
+                val geocoder = Geocoder(this, Locale.getDefault())
+
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    geocoder.getFromLocation(lat, lng, 1) { addresses ->
+                        if (addresses.isNotEmpty()) {
+                            val fullAddress = addresses[0].getAddressLine(0)
+                            addressText.value = fullAddress
+                        } else {
+                            addressText.value = "Адрес не найден"
+                        }
+                        isLoading.value = false
+                    }
+                } else {
+                    val addresses = geocoder.getFromLocation(lat, lng, 1)
+                    if (addresses != null && addresses.isNotEmpty()) {
+                        val fullAddress = addresses[0].getAddressLine(0)
+                        addressText.value = fullAddress
+                    } else {
+                        addressText.value = "Адрес не найден"
+                    }
+                    isLoading.value = false
+                }
+            } else {
+                addressText.value = "Не удалось получить координаты"
+                isLoading.value = false
+            }
+        }.addOnFailureListener {
+            addressText.value = "Ошибка при получении координат"
+            isLoading.value = false
+        }
+    }
+}
+
+@Composable
+fun Screen(
+    address: String,
+    coordinates: String,
+    isLoading: Boolean,
+    onGetAddressClick: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(20.dp),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Button(onClick = onGetAddressClick) {
+            Text(text = "Получить мой адрес")
+        }
+
+        if (isLoading) {
+            CircularProgressIndicator()
+            Spacer(modifier = Modifier.height(20.dp))
+        }
+
+        Text(
+            text = address,
+            fontSize = 22.sp
+        )
+
+        Text(text = coordinates)
+    }
+}
