@@ -1,0 +1,29 @@
+package com.example.myapplication
+
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
+import kotlin.random.Random
+
+class CurrencyViewModel : ViewModel() {
+    private val _currencyRate = MutableStateFlow(90.0)
+    val currencyRate = _currencyRate.asStateFlow()
+    init {
+        startAutoUpdate()
+    }
+    private fun startAutoUpdate() {
+        viewModelScope.launch {
+            while(true) {
+                delay(5000)
+                updateRate()
+            }
+        }
+    }
+    fun updateRate() {
+        _currencyRate.value += Random.nextDouble(-0.5, +0.5)
+        _currencyRate.value = _currencyRate.value.coerceIn(80.00, 100.0)
+    }
+}
