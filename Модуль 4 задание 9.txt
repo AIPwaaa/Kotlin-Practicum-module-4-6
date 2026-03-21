@@ -1,0 +1,259 @@
+package com.example.myapplication
+
+import android.app.AlarmManager
+import android.app.PendingIntent
+import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
+import android.os.Bundle
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.compose.material3.Button
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import java.util.Calendar
+import android.Manifest
+import android.hardware.Sensor
+import android.hardware.SensorManager
+import android.provider.Settings
+import android.system.Os.close
+import android.widget.Toast
+import androidx.activity.viewModels
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.fadeIn
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.rotate
+import androidx.compose.foundation.Canvas
+import androidx.compose.material3.Surface
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.compose.ui.graphics.Path
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkManager
+import androidx.work.workDataOf
+
+class MainActivity : ComponentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)
+                != PackageManager.PERMISSION_GRANTED) {
+
+                requestPermissions(
+                    arrayOf(android.Manifest.permission.POST_NOTIFICATIONS),
+                    100
+                )
+            }
+        }
+
+        NotificationHelper.createChannel(this)
+
+        setContent {
+            Screen { startWeatherChain() }
+        }
+    }
+
+    private fun startWeatherChain() {
+        val moscowRequest = OneTimeWorkRequestBuilder<WeatherWorker>()
+            .setInputData(workDataOf("city_name" to "Москва"))
+            .build()
+
+        val londonRequest = OneTimeWorkRequestBuilder<WeatherWorker>()
+            .setInputData(workDataOf("city_name" to "Лондон"))
+            .build()
+
+        val newYorkRequest = OneTimeWorkRequestBuilder<WeatherWorker>()
+            .setInputData(workDataOf("city_name" to "Нью-Йорк"))
+            .build()
+
+        val reportRequest = OneTimeWorkRequestBuilder<ReportWorker>().build()
+
+        WorkManager.getInstance(this)
+            .beginWith(listOf(moscowRequest, londonRequest, newYorkRequest))
+            .then(reportRequest)
+            .enqueue()
+    }
+}
+
+@Composable
+fun Screen(onStartClick: () -> Unit) {
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = MaterialTheme.colorScheme.background
+    ) {
+        Column(
+            modifier = Modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = "Сбор прогноза погоды",
+                style = MaterialTheme.typography.headlineMedium
+            )
+            Spacer(modifier = Modifier.height(20.dp))
+            Button(onClick = onStartClick) {
+                Text("Собрать прогноз")
+            }
+        }
+    }
+}
+
+package com.example.myapplication
+
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import androidx.work.Worker
+import androidx.work.WorkerParameters
+import android.content.Context
+import android.os.Build
+import androidx.core.app.NotificationCompat
+import androidx.work.CoroutineWorker
+import androidx.work.ForegroundInfo
+import androidx.work.workDataOf
+import kotlinx.coroutines.delay
+
+class WeatherWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
+    suspend override fun doWork(): Result {
+        val cityName = inputData.getString("city_name") ?: "Unknown"
+
+        setForeground(createForegroundInfo("Загрузка: $cityName..."))
+
+        delay((2000..5000).random().toLong())
+        val temp = (10..25).random()
+
+        val outputData = workDataOf(cityName to temp)
+        return Result.success(outputData)
+    }
+    private fun createForegroundInfo(text: String): ForegroundInfo {
+        val notification = NotificationCompat.Builder(applicationContext, NotificationHelper.CHANNEL_ID)
+            .setContentTitle("Сбор данных")
+            .setContentText(text)
+            .setSmallIcon(android.R.drawable.ic_menu_agenda)
+            .setOngoing(true)
+            .build()
+
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            ForegroundInfo(
+                NotificationHelper.NOTIFICATION_ID,
+                notification,
+                android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+            )
+        } else {
+            ForegroundInfo(NotificationHelper.NOTIFICATION_ID, notification)
+        }
+    }
+}
+
+package com.example.myapplication
+
+import android.app.NotificationManager
+import android.content.Context
+import android.os.Build
+import androidx.core.app.NotificationCompat
+import androidx.work.CoroutineWorker
+import androidx.work.ForegroundInfo
+import androidx.work.WorkerParameters
+
+class ReportWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
+
+    override suspend fun doWork(): Result {
+        setForeground(createForegroundInfo("Все данные получены, формируем отчёт…"))
+
+        kotlinx.coroutines.delay(2000)
+
+        val allData = inputData.keyValueMap
+        val temperatures = allData.values.filterIsInstance<Int>()
+
+        val avgTemp = if (temperatures.isNotEmpty()) temperatures.average().toInt() else 0
+        val finalResult = "Отчёт готов! Средняя температура: +$avgTemp°C"
+
+        val notificationManager = applicationContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        val finalNotification = NotificationCompat.Builder(applicationContext, NotificationHelper.CHANNEL_ID)
+            .setContentTitle("Погода собрана")
+            .setContentText(finalResult)
+            .setSmallIcon(android.R.drawable.ic_menu_compass)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setOngoing(false)
+            .build()
+
+        notificationManager.notify(NotificationHelper.NOTIFICATION_ID, finalNotification)
+
+        return Result.success()
+    }
+
+    private fun createForegroundInfo(text: String): ForegroundInfo {
+        val notification = NotificationCompat.Builder(applicationContext, NotificationHelper.CHANNEL_ID)
+            .setContentTitle("Сбор данных")
+            .setContentText(text)
+            .setSmallIcon(android.R.drawable.ic_menu_agenda)
+            .setOngoing(true)
+            .build()
+
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            ForegroundInfo(
+                NotificationHelper.NOTIFICATION_ID,
+                notification,
+                android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+            )
+        } else {
+            ForegroundInfo(NotificationHelper.NOTIFICATION_ID, notification)
+        }
+    }
+}
+
+package com.example.myapplication
+
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.content.Context
+import android.os.Build
+
+object NotificationHelper {
+    const val CHANNEL_ID = "weather_channel"
+    const val NOTIFICATION_ID = 101
+
+    fun createChannel(context: Context) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val name = "Weather Updates"
+            val descriptionText = "Уведомления о загрузке погоды"
+            val importance = NotificationManager.IMPORTANCE_LOW
+            val channel = NotificationChannel(CHANNEL_ID, name, importance).apply {
+                description = descriptionText
+            }
+            val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            notificationManager.createNotificationChannel(channel)
+        }
+    }
+}
