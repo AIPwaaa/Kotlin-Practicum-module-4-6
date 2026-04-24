@@ -1,0 +1,8 @@
+package com.example.myapplication
+
+data class DiaryEntry(
+    val fileName: String,
+    val timestamp: Long,
+    val title: String,
+    val previewText: String
+)

@@ -1,0 +1,64 @@
+package com.example.myapplication
+
+import android.content.Context
+import java.io.File
+
+class DiaryRepository(private val context: Context) {
+
+    fun getAllEntries(): List<DiaryEntry> {
+        val files = context.filesDir.listFiles { _, name -> name.endsWith(".txt") } ?: return emptyList()
+
+        return files.mapNotNull { file ->
+            parseFileToEntry(file)
+        }.sortedByDescending { it.timestamp }
+    }
+
+    fun saveEntry(title: String, content: String): DiaryEntry {
+        val timestamp = System.currentTimeMillis()
+
+        val safeTitle = if (title.isNotBlank()) {
+            title.replace(Regex("[\\\\/:*?\"<>|]"), "")
+        } else {
+            "Без названия"
+        }
+
+        val fileName = "${timestamp}_${safeTitle}.txt"
+        val file = File(context.filesDir, fileName)
+
+        file.writeText(content)
+
+        return parseFileToEntry(file)!!
+    }
+
+    fun deleteEntry(fileName: String): Boolean {
+        val file = File(context.filesDir, fileName)
+        return if (file.exists()) file.delete() else false
+    }
+
+    fun readFullContent(fileName: String): String {
+        val file = File(context.filesDir, fileName)
+        return if (file.exists()) file.readText() else ""
+    }
+
+    private fun parseFileToEntry(file: File): DiaryEntry? {
+        return try {
+            val nameWithoutExt = file.nameWithoutExtension
+            val parts = nameWithoutExt.split("_", limit = 2)
+
+            val timestamp = parts.getOrNull(0)?.toLongOrNull() ?: 0L
+            val title = parts.getOrNull(1) ?: "Без заголовка"
+
+            val content = file.readText()
+            val preview = if (content.length > 40) content.take(40) + "..." else content
+
+            DiaryEntry(
+                fileName = file.name,
+                timestamp = timestamp,
+                title = title,
+                previewText = preview
+            )
+        } catch (e: Exception) {
+            null
+        }
+    }
+}
